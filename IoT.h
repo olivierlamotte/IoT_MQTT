@@ -11,7 +11,7 @@
 #define DEFAULT_AP_SSID "ESPAccessPoint"
 #define PGMSTR(x) (__FlashStringHelper*)(x)
 
-
+#include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiClient.h>
@@ -34,7 +34,7 @@ class IoT {
 
 public:
 
-	const String VERSION = "1.0";
+	const String VERSION = "1.1";
 
 	// Enumeration of stored data type
 	static const byte ACCESS_POINT = 00000001;
@@ -63,7 +63,14 @@ public:
 	// Construct an instance of the IoT and load configuration previously stored if exists.
 	//
 	// _ap_ssid and _ap_pwd the ssid name and password to use for the access point if it's needed
-	IoT(const String clientUID = "", LOG_LEVEL logLevel = LOG_ERROR, String _ap_ssid = DEFAULT_AP_SSID, String _ap_pwd = "", int _webServerPort = 80);
+	//IoT(const String clientUID = "", LOG_LEVEL logLevel = LOG_ERROR, String _ap_ssid = DEFAULT_AP_SSID, String _ap_pwd = "", int _webServerPort = 80);
+
+	// IoT constructor
+	//
+	// Construct an instance of the IoT and load configuration previously stored if exists.
+	//
+	// _ap_ssid and _ap_pwd the ssid name and password to use for the access point if it's needed
+	IoT(const String clientUID = "", const String user = "", const String pwd = "", LOG_LEVEL logLevel = LOG_ERROR, String _ap_ssid = DEFAULT_AP_SSID, String _ap_pwd = "", int _webServerPort = 80);
 	virtual ~IoT();
 
 	// Set the log level
@@ -90,7 +97,7 @@ public:
 	void setCustomUserWebSite(void(*func)(std::unique_ptr<ESP8266WebServer> const));
 
 
-	String getCurrentIP();
+	
 
 
 	// Delete configuration file of AccessPoint, Network, Broker
@@ -104,6 +111,11 @@ public:
 
 	bool isNetworkConnected();
 	bool isMQTTBrokerConnected();
+	
+	String getCurrentIP();
+	String getMacAddress();
+	String getCurrentSSID();
+	long getCurrentRSSI();
 
 	//------------------------------------------------------------------------
 	//		HANDLERS
@@ -221,7 +233,7 @@ private:
 	void handleLogin();
 	String getLoginBody() const;
 	void returnToLogin();
-  bool isAuthentified();
+    bool isAuthentified();
 
 	// Return the custom we site or null
 	void (*_displayCustomWebSite)(std::unique_ptr<ESP8266WebServer> server) = NULL;
@@ -259,6 +271,7 @@ private:
 	void (*_stationDisconnectedCallback)(const WiFiEventStationModeDisconnected& event) = NULL;
 	WiFiEventHandler wifiStationDisconnectedHandler;
 	void handleWifiStationDisconnectedEvent(const WiFiEventStationModeDisconnected& event);
+		
 };
 
 #endif /* IOT_H_ */

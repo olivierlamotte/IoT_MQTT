@@ -1,5 +1,4 @@
 #include "IoT.h"
-#include "Arduino.h"
 
 
 // TODO :

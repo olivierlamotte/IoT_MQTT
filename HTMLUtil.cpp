@@ -75,9 +75,9 @@ String HTMLUtil::getBodyFooter() {
 }
 
 String HTMLUtil::getVersionTag(){
-	String result = F("p align=\"right\">");
+	String result = F("<p align=\"right\">");
 	result += this->version;
-	result += F(" © Olivier Lamotte, Guillaume Prost, 2017</p>");
+	result += F(" © Olivier Lamotte TEST, Guillaume Prost, 2017</p>");
 	return result;
 }
 

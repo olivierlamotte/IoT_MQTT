@@ -4,10 +4,12 @@
  *  Created on: 18 déc. 2016
  *      Author: olamotte
  */
+#include <Arduino.h>
 #include "IoT.h"
 
 
-IoT::IoT(const String clientUID, LOG_LEVEL logLevel, String _ap_ssid, String _ap_pwd, int _webServerPort) {
+// Public
+IoT::IoT(const String clientUID, const String user, const String pwd, LOG_LEVEL logLevel, String _ap_ssid, String _ap_pwd, int _webServerPort) {
 
 	this->setLogLevel(logLevel);
 
@@ -19,36 +21,43 @@ IoT::IoT(const String clientUID, LOG_LEVEL logLevel, String _ap_ssid, String _ap
 
 	apConfig = new APConfig(_ap_ssid, _ap_pwd);
 	networkConfig = new NetworkConfig();
-	brokerConfig = new BrokerConfig(clientUID);
+	brokerConfig = new BrokerConfig(clientUID, user, pwd);
 
 	// Register wifi event handler
 	wifiAPConnectedHandler = WiFi.onSoftAPModeStationConnected(std::bind(&IoT::handleWifiAPConnectedEvent, this, std::placeholders::_1));
 	wifiAPDisconnectedHandler = WiFi.onSoftAPModeStationDisconnected(std::bind(&IoT::handleWifiAPDisconnectedEvent, this, std::placeholders::_1));
 	wifiStationConnectedHandler = WiFi.onStationModeConnected(std::bind(&IoT::handleWifiStationConnectedEvent, this, std::placeholders::_1));
 	wifiStationDisconnectedHandler = WiFi.onStationModeDisconnected(std::bind(&IoT::handleWifiStationDisconnectedEvent, this, std::placeholders::_1));
-
+	
 	// Configure the Wifi
 	WiFi.mode(WIFI_AP_STA);
 	WiFi.enableAP(false);
-	WiFi.enableSTA(false);
+	WiFi.enableSTA(false);	
+	
+	log(IoT::LOG_INFO, "Version : "+this->VERSION);
 }
 
+// Public
 IoT::~IoT() {
 	delete apConfig;
 	delete networkConfig;
 }
 
+// Public
 String IoT::getClientUID() {
 	return brokerConfig->getMQTTUID();
 }
 
+// Public
 void IoT::setLogLevel(IoT::LOG_LEVEL level) {
 	this->level = level;
 }
 
+// Private
 void IoT::log(LOG_LEVEL msgLevel, String msg) {
 	log(msgLevel, msg, "");
 }
+// Private
 void IoT::log(LOG_LEVEL msgLevel, String msg, String data) {
 	if (msgLevel == LOG_OFF) return;
 
@@ -65,14 +74,17 @@ void IoT::log(LOG_LEVEL msgLevel, String msg, String data) {
 		Serial.print(data);
 	}
 }
+// Private
 void IoT::logln(LOG_LEVEL msgLevel, String msg) {
 	logln(msgLevel, msg, "");
 }
+// Private
 void IoT::logln(LOG_LEVEL msgLevel, String msg, String data) {
 	if (msgLevel == LOG_OFF) return;
 	log(msgLevel, msg, data);
 	if (msgLevel <= this->level) Serial.println();
 }
+// Private
 void IoT::logln(LOG_LEVEL msgLevel, String msg, int data) {
 	if (msgLevel == LOG_OFF) return;
 	log(msgLevel, msg, "");
@@ -80,7 +92,7 @@ void IoT::logln(LOG_LEVEL msgLevel, String msg, int data) {
 	if (msgLevel <= this->level) Serial.println();
 }
 
-
+// Public
 String IoT::getCurrentIP() {
 	if (WiFi.status() == WL_CONNECTED) {
 		if (WiFi.getMode() == WIFI_AP) {
@@ -90,8 +102,26 @@ String IoT::getCurrentIP() {
 	}
 	return "";
 }
+// Public
+String IoT::getMacAddress() {
+	return WiFi.softAPmacAddress();
+}
+// Public
+String IoT::getCurrentSSID() {
+	if (WiFi.status() == WL_CONNECTED && WiFi.getMode() != WIFI_AP) {
+		return WiFi.SSID();
+	}
+	return "-";
+}
+// Public
+long IoT::getCurrentRSSI() {
+	if (WiFi.status() == WL_CONNECTED && WiFi.getMode() != WIFI_AP) {
+		return WiFi.RSSI();
+	}
+	return 0;
+}
 
-
+// Public
 IoT::CONNECT_RESULT IoT::autoConnect(bool connectMQTTBroker) {
 
 	logln(LOG_DEBUG, "WiFiStatus: ", (WiFi.status() == WL_CONNECTED) ? "CONNECTED" : "NOT CONNECTED");
@@ -112,6 +142,7 @@ IoT::CONNECT_RESULT IoT::autoConnect(bool connectMQTTBroker) {
 		if (!apActive) {
 
 			// We start the AccessPoint
+			logln(LOG_DEBUG, F("AccessPoint Starting requested"));
 			WiFi.mode(WIFI_AP);
 			apActive = WiFi.softAP(apConfig->getSSID().c_str(), apConfig->getPWD().c_str(), 1, false);
 
@@ -156,10 +187,13 @@ IoT::CONNECT_RESULT IoT::autoConnect(bool connectMQTTBroker) {
 
 	} else { // Not configuration mode request
 
-
+		logln(LOG_DEBUG, F("No AccessPoint and configuration mode request"));
+		
 		// We check if we can update web site and pubSub
 		if (configWebSiteActive) {
-
+			
+			logln(LOG_DEBUG, F("Config web site is active"));
+				
 			if (server != NULL) {
 				server->handleClient();
 				logln(LOG_FINEST, F("Configuration web site updated !"));
@@ -172,7 +206,9 @@ IoT::CONNECT_RESULT IoT::autoConnect(bool connectMQTTBroker) {
 
 
 		if (WiFi.status() != WL_CONNECTED) { // We are not connected to the Network
-
+			
+			logln(LOG_DEBUG, F("Not connected to network"));
+			
 			// We try to connect network
 			WiFi.mode(WIFI_STA);
 
@@ -203,7 +239,9 @@ IoT::CONNECT_RESULT IoT::autoConnect(bool connectMQTTBroker) {
 			}
 
 		} else { // We are connected
-
+			
+			logln(LOG_DEBUG, F("Network connection ok"));
+			
 			// We check if we are connected to the mqtt broker
 			if (pubSub->connected()) {
 				logln(LOG_FINEST, F("MQTT Callback updated !"));
@@ -280,10 +318,12 @@ IoT::CONNECT_RESULT IoT::autoConnect(bool connectMQTTBroker) {
 	}
 }
 
+// Public
 bool IoT::createPubSubClient(void (*pubSubCallback)(char*, byte*, unsigned int)) {
 	return createPubSubClient(brokerConfig->getMQTTServer(), brokerConfig->getMQTTPort(), brokerConfig->getMQTTUID(), pubSubCallback);
 }
 
+// Public
 bool IoT::createPubSubClient(String serverIp, String port, String UID, void (*pubSubCallback)(char*, byte*, unsigned int)) {
 	if (pubSubCallback == NULL) return false;
 
@@ -299,21 +339,22 @@ bool IoT::createPubSubClient(String serverIp, String port, String UID, void (*pu
 		this->pubSub = new PubSubClient(brokerIp, brokerConfig->getMQTTPort().toInt(), pubSubCallback, wifiClient);
 
 		if (pubSub != NULL) {
-			logln(LOG_INFO, "MQTT Broker configured!");
+			logln(LOG_INFO, F("MQTT Broker configured!"));
 		} else {
-			logln(LOG_ERROR, "MQTT Broker configuration failed!");
+			logln(LOG_ERROR, F("MQTT Broker configuration failed!"));
 			return false;
 		}
 	}
 	return true;
 }
 
+// Public
 bool IoT::autoConnectPubSubClient() {
 
+	logln(LOG_DEBUG, F("AutoConnectPubSubClient"));
 	if (pubSub != NULL && !pubSub->connected()) {
 
 		pubSub->connect(brokerConfig->getMQTTUID().c_str());
-
 		int state = pubSub->state();
 
 		if (state != MQTT_CONNECTED) {
@@ -343,10 +384,16 @@ bool IoT::autoConnectPubSubClient() {
 				logln(LOG_ERROR, "Connect Broker Error");
 				break;
 			}
-			(*_onBrokerConnectionFailedCallback)();
+			
+			if (_onBrokerConnectionFailedCallback != NULL) {
+				(*_onBrokerConnectionFailedCallback)();
+			}
+			
 		} else {
 			logln(LOG_INFO, "MQTTBroker connected");
-			(*_onBrokerConnectedCallback)();
+			if (_onBrokerConnectedCallback != NULL) {
+				(*_onBrokerConnectedCallback)();
+			}
 			return true;
 		}
 
@@ -356,20 +403,23 @@ bool IoT::autoConnectPubSubClient() {
 	return true;
 }
 
+// Public
 bool IoT::mqttSubscribe(String topic) {
 	return pubSub->subscribe(topic.c_str());
 }
+// Public
 bool IoT::mqttPublish(String topic, String payload) {
 	return pubSub->publish(topic.c_str(), payload.c_str());
 }
 
-
+// Public
 bool IoT::disconnectNetwork() {
 	configWebSiteActive = false;
 	confirmOrCustomWebSiteActive = false;
 	return WiFi.disconnect(false);
 }
 
+// Private
 void IoT::startConfigurationWebSite() {
 
 	server.reset(new ESP8266WebServer(webServerPort));
@@ -397,22 +447,26 @@ void IoT::startConfigurationWebSite() {
 
 }
 
+// Public
 void IoT::setCustomUserWebSite(void(*func)(std::unique_ptr<ESP8266WebServer> const)) {
 	_displayCustomWebSite = func;
 }
 
+// Public
 bool IoT::isNetworkConnected() {
 	return WiFi.status() == WL_CONNECTED;
 }
+// Public
 bool IoT::isMQTTBrokerConnected() {
 	return pubSub != NULL && pubSub->connected();
 }
 
-
+// Public
 bool IoT::resetConfig(byte const config) {
 
 	bool resultAP = false;
 	if (config & ACCESS_POINT) {
+		logln(LOG_INFO, "ACCESS_POINT configuration deleted...");
 		apConfig->setSSID(DEFAULT_AP_SSID);
 		apConfig->setPWD("");
 		resultAP = apConfig->save();
@@ -420,6 +474,7 @@ bool IoT::resetConfig(byte const config) {
 
 	bool resultNetwork = false;
 	if (config & NETWORK) {
+		logln(LOG_INFO, "NETWORK configuration deleted...");		
 		networkConfig->setSSID("");
 		networkConfig->setPWD("");
 		networkConfig->setUserNAME("");
@@ -429,9 +484,12 @@ bool IoT::resetConfig(byte const config) {
 
 	bool resultBroker = false;
 	if (config & BROKER) {
+		logln(LOG_INFO, "BROKER configuration deleted...");		
 		brokerConfig->setMQTTServer("");
 		brokerConfig->setMQTTPort("");
 		brokerConfig->setMQTTUID("");
+		brokerConfig->setMQTTUser("");
+		brokerConfig->setMQTTPwd("");
 		resultBroker = brokerConfig->save();
 	}
 
@@ -448,18 +506,26 @@ bool IoT::resetConfig(byte const config) {
 		}
 
 		if (resultAP || resultNetwork || resultBroker) {
-			(*_onConfigDeletedCallback)(deleted);
+			if (_onBrokerConnectedCallback != NULL) {
+				(*_onConfigDeletedCallback)(deleted);
+			}
 		}
 	}
 
 	return resultAP || resultNetwork || resultBroker;
 }
 
-
+// Public
 void IoT::restart(bool configMode) {
+	logln(LOG_INFO, "Restart asked");
 	if (_onRestartRequestCallback) {
 		(*_onRestartRequestCallback)();
 	}
+	
+	if (configMode) {
+		this->resetConfig(IoT::NETWORK | IoT::BROKER);
+	}
+	delay(2000);
 	requestConfigMode = configMode;
 	ESP.restart();
 }
@@ -671,6 +737,14 @@ String IoT::getFillConfigBrokerScript() const {
 	script += brokerConfig->getMQTTUID();
 	script += F("';");
 
+	script += F(" document.getElementById('MQTTUSER').value = '");
+	script += brokerConfig->getMQTTUser();
+	script += F("';");
+	
+	script += F(" document.getElementById('MQTTPWD').value = '");
+	script += brokerConfig->getMQTTPwd();
+	script += F("';");
+		
 	script += F("}");
 
 	return script;
@@ -683,6 +757,8 @@ String IoT::getConfigBrokerBody() const {
 	body += F("<div><label for=\"MQTTServer\">IP du server: </label><input type=\"text\" size=\"30\" name=\"MQTTServer\" id=\"MQTTServer\"><br /></div>");
 	body += F("<div><label for=\"MQTTPort\">Port: </label><input type=\"text\" size=\"30\" name=\"MQTTPort\" id=\"MQTTPort\"><br /></div>");
 	body += F("<div><label for=\"MQTTUID\">UID: </label><input type=\"text\" size=\"30\" name=\"MQTTUID\" id=\"MQTTUID\"><br /></div></fieldset>");
+	body += F("<div><label for=\"MQTTUSER\">User: </label><input type=\"text\" size=\"30\" name=\"MQTTUSER\" id=\"MQTTUSER\"><br /></div></fieldset>");
+	body += F("<div><label for=\"MQTTPWD\">Pwd: </label><input type=\"text\" size=\"30\" name=\"MQTTPWD\" id=\"MQTTPWD\"><br /></div></fieldset>");
 	body += F("<div style=\"text-align: center;\"><button type=\"submit\" id=\"btSvgBroker\">Sauvegarder</button></div>");
 	body += F("<div style=\"text-align: center;\"><button type=\"reset\">Tout effacer</div></form><br />");
 	body += util->getBodyFooter();
@@ -694,6 +770,8 @@ void IoT::handleSubmitBrokerConfig() {
 	brokerConfig->setMQTTServer(server->arg("MQTTServer"));
 	brokerConfig->setMQTTPort(server->arg("MQTTPort"));
 	brokerConfig->setMQTTUID(server->arg("MQTTUID"));
+	brokerConfig->setMQTTUser(server->arg("MQTTUSER"));
+	brokerConfig->setMQTTPwd(server->arg("MQTTPWD"));
 
 	if (brokerConfig->save()) {
 		if (_onBrokerConfigStoredCallback != NULL) {
@@ -958,43 +1036,47 @@ void IoT::startConfirmationWebSite() {
 // ----------------------------------------------------------------------------
 // Manage WebServer event
 // ----------------------------------------------------------------------------
+// Public
 void IoT::onConfigWebSiteStarted(void(*func)(IPAddress)) {
 	_onConfigWebSiteStartedCallback = func;
 }
-
+// Public
 void IoT::onConfirmWebSiteStarted(void(*func)(IPAddress)) {
 	_onConfirmWebSiteStartedCallback = func;
 }
-
+// Public
 void IoT::onCustomWebSiteStarted(void(*func)(IPAddress)) {
 	_onCustomWebSiteStartedCallback = func;
 }
-
+// Public
 void IoT::onBrokerConnected(void(*func)(void)) {
 	_onBrokerConnectedCallback = func;
 }
-
+// Public
 void IoT::onBrokerConnectionFailed(void(*func)(void)) {
 	_onBrokerConnectionFailedCallback = func;
 }
-
+// Public
 void IoT::onNetworkDisconnectRequest(void(*func)(void)) {
 	_onNetworkDisconnectRequestCallback = func;
 }
-
+// Public
 void IoT::onRestartRequest(void(*func)(void)) {
 	_onRestartRequestCallback = func;
 }
-
+// Public
 void IoT::onAPConfigStored(void(*func)(void)) {
 	_onAPConfigStoredCallback = func;
 }
+// Public
 void IoT::onNetworkConfigStored(void(*func)(void)) {
 	_onNetworkConfigStoredCallback = func;
 }
+// Public
 void IoT::onBrokerConfigStored(void(*func)(void)) {
 	_onBrokerConfigStoredCallback = func;
 }
+// Public
 void IoT::onWebServerConfigDeleted(void(*func)(const byte)) {
 	_onConfigDeletedCallback = func;
 }
@@ -1007,21 +1089,25 @@ void IoT::onWebServerConfigDeleted(void(*func)(const byte)) {
 // ----------------------------------------------------------------------------
 // Manage wifi event
 // ----------------------------------------------------------------------------
+// Private
 void IoT::handleWifiAPConnectedEvent(const WiFiEventSoftAPModeStationConnected& event) {
 	if (_apConnectedCallback != NULL) {
 		(*_apConnectedCallback)(event);
 	}
 }
+// Private
 void IoT::handleWifiAPDisconnectedEvent(const WiFiEventSoftAPModeStationDisconnected& event) {
 	if (_apDisconnectedCallback != NULL) {
 		(*_apDisconnectedCallback)(event);
 	}
 }
+// Private
 void IoT::handleWifiStationConnectedEvent(const WiFiEventStationModeConnected& event) {
 	if (_stationConnectedCallback != NULL) {
 		(*_stationConnectedCallback)(event);
 	}
 }
+// Private
 void IoT::handleWifiStationDisconnectedEvent(const WiFiEventStationModeDisconnected& event) {
 	if (_stationDisconnectedCallback != NULL) {
 		(*_stationDisconnectedCallback)(event);
@@ -1033,15 +1119,19 @@ void IoT::handleWifiStationDisconnectedEvent(const WiFiEventStationModeDisconnec
 // ----------------------------------------------------------------------------
 // Wifi Handler
 // ----------------------------------------------------------------------------
+// Public
 void IoT::setAPConnectedCallback( void (*func)(const WiFiEventSoftAPModeStationConnected& event)) {
 	_apConnectedCallback = func;
 }
+// Public
 void IoT::setAPDisconnectedCallback( void (*func)(const WiFiEventSoftAPModeStationDisconnected& event)) {
 	_apDisconnectedCallback = func;
 }
+// Public
 void IoT::setStationConnectedCallback( void (*func)(const WiFiEventStationModeConnected& event)) {
 	_stationConnectedCallback = func;
 }
+// Public
 void IoT::setStationDisconnectedCallback( void (*func)(const WiFiEventStationModeDisconnected& event)) {
 	_stationDisconnectedCallback = func;
 }

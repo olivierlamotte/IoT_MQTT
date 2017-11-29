@@ -11,6 +11,11 @@ BrokerConfig::BrokerConfig(String clientUID) {
 	this->load();
 	this->forcedMqttUID = clientUID;
 }
+BrokerConfig::BrokerConfig(String clientUID, String user, String pwd) {
+	this->load();
+	this->forcedMqttUser = user;
+	this->forcedMqttPwd = pwd;
+}
 
 BrokerConfig::~BrokerConfig() {
 }
@@ -25,9 +30,14 @@ void BrokerConfig::setMQTTPort(String _mqttPort) {
 void BrokerConfig::setMQTTUID(String _mqttUID) {
 	this->mqttUID = _mqttUID;
 }
+void BrokerConfig::setMQTTUser(String _mqttUser) {
+	this->mqttUser = _mqttUser;
+}
+void BrokerConfig::setMQTTPwd(String _mqttPwd) {
+	this->mqttPwd = _mqttPwd;
+}
 
 String BrokerConfig::getMQTTServer() {
-
 	String trimMqttServer = this->mqttServer;
 	trimMqttServer.trim();
 	return trimMqttServer;
@@ -45,6 +55,22 @@ String BrokerConfig::getMQTTUID() {
 	}
 	return forcedMqttUID;
 }
+String BrokerConfig::getMQTTUser() {
+	if (forcedMqttUser.length() == 0) {
+		String trimMqttUser = this->mqttUser;
+		trimMqttUser.trim();
+		return trimMqttUser;
+	}
+	return forcedMqttUser;
+}
+String BrokerConfig::getMQTTPwd() {
+	if (forcedMqttPwd.length() == 0) {
+		String trimMqttPwd = this->mqttPwd;
+		trimMqttPwd.trim();
+		return trimMqttPwd;
+	}
+	return forcedMqttPwd;
+}
 
 bool BrokerConfig::load() {
 	if (this->isFSMount()) {
@@ -53,6 +79,8 @@ bool BrokerConfig::load() {
 			this->mqttServer = mqttConfigFile.readStringUntil('\n');
 			this->mqttPort = mqttConfigFile.readStringUntil('\n');
 			this->mqttUID = mqttConfigFile.readStringUntil('\n');
+			this->mqttUser = mqttConfigFile.readStringUntil('\n');
+			this->mqttPwd = mqttConfigFile.readStringUntil('\n');						
 			mqttConfigFile.close();
 			return true;
 		} else {
@@ -69,6 +97,8 @@ bool BrokerConfig::save() {
 			mqttConfigFile.println(this->mqttServer);
 			mqttConfigFile.println(this->mqttPort);
 			mqttConfigFile.println(this->mqttUID);
+			mqttConfigFile.println(this->mqttUser);
+			mqttConfigFile.println(this->mqttPwd);
 			mqttConfigFile.flush();
 			mqttConfigFile.close();
 			return true;
